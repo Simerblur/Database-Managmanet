@@ -1,96 +1,131 @@
-"""
-Genre Table Builder
-Creates normalized genre table from movie data
-"""
-
 import pandas as pd
 from sqlalchemy import create_engine
 
-
 def create_genre_table(sales_df, meta_df, connection_string):
-    """
-    Creates a normalized genre table from sales and metadata
-    Returns: genre DataFrame and genre lookup dictionary
-    """
     
     print("Building genre table...")
     
-    # STEP 1: Collect all unique genres from both datasets
-    all_genres = set()
+    # Create an empty set to store all unique genres
+    # Sets automatically remove duplicates for us
+    unique_genres = set()
     
-    # Get genres from sales data
-    for _, movie in sales_df.iterrows():
-        genre = movie.get('genre')
-        if pd.notna(genre) and genre.strip():
-            # Handle multiple genres (comma or slash separated)
-            if ',' in genre:
-                genres = [g.strip() for g in genre.split(',')]
-                all_genres.update(genres)
-            elif '/' in genre:
-                genres = [g.strip() for g in genre.split('/')]
-                all_genres.update(genres)
+    # PART 1: Get genres from sales data
+    # Loop through each movie in sales data
+    for index, movie_row in sales_df.iterrows():
+        
+        # Get the genre column for this movie
+        genre_text = movie_row.get('genre')
+        
+        # Only process if genre exists and isn't empty
+        if pd.notna(genre_text) and genre_text.strip():
+            
+            # Some movies have multiple genres like "Action, Comedy"
+            # We need to split them up
+            if ',' in genre_text:
+                # Split by comma and clean up spaces
+                individual_genres = [g.strip() for g in genre_text.split(',')]
+                # Add all genres to our set
+                unique_genres.update(individual_genres)
+            
+            # Some movies use slash like "Action/Adventure"
+            elif '/' in genre_text:
+                # Split by slash and clean up spaces  
+                individual_genres = [g.strip() for g in genre_text.split('/')]
+                # Add all genres to our set
+                unique_genres.update(individual_genres)
+            
+            # Single genre movies
             else:
-                all_genres.add(genre.strip())
+                # Just add the single genre
+                unique_genres.add(genre_text.strip())
     
-    # Get genres from metadata (if available)
+    # PART 2: Get genres from metadata (same process)
     if 'genre' in meta_df.columns:
-        for _, movie in meta_df.iterrows():
-            genre = movie.get('genre')
-            if pd.notna(genre) and genre.strip():
-                if ',' in genre:
-                    genres = [g.strip() for g in genre.split(',')]
-                    all_genres.update(genres)
-                elif '/' in genre:
-                    genres = [g.strip() for g in genre.split('/')]
-                    all_genres.update(genres)
+        for index, movie_row in meta_df.iterrows():
+            
+            genre_text = movie_row.get('genre')
+            
+            if pd.notna(genre_text) and genre_text.strip():
+                
+                # Handle comma-separated genres
+                if ',' in genre_text:
+                    individual_genres = [g.strip() for g in genre_text.split(',')]
+                    unique_genres.update(individual_genres)
+                
+                # Handle slash-separated genres
+                elif '/' in genre_text:
+                    individual_genres = [g.strip() for g in genre_text.split('/')]
+                    unique_genres.update(individual_genres)
+                
+                # Single genres
                 else:
-                    all_genres.add(genre.strip())
+                    unique_genres.add(genre_text.strip())
     
-    # Remove empty strings
-    all_genres = {genre for genre in all_genres if genre}
+    # Remove any empty strings that might have snuck in
+    unique_genres = {genre for genre in unique_genres if genre}
     
-    # STEP 2: Create genre records with IDs
-    genre_records = []
+    # PART 3: Create the final table
+    # Make a list to hold our genre records
+    genre_table_data = []
     
-    for genre_id, genre_name in enumerate(sorted(all_genres), start=1):
-        genre_records.append({
-            'GenreId': genre_id,
-            'Name': genre_name
-        })
+    # Give each genre a number (ID) starting from 1
+    # Sort genres alphabetically so IDs are consistent
+    for genre_number, genre_name in enumerate(sorted(unique_genres), start=1):
+        
+        # Create a record for each genre
+        genre_record = {
+            'GenreId': genre_number,    # The ID number
+            'Name': genre_name          # The genre name
+        }
+        
+        # Add this record to our table
+        genre_table_data.append(genre_record)
     
-    # STEP 3: Save to database
-    genre_df = pd.DataFrame(genre_records)
-    engine = create_engine(connection_string)
-    genre_df.to_sql('genre', engine, if_exists='replace', index=False)
+    # PART 4: Save to database
+    # Convert our list of records into a DataFrame (table)
+    final_genre_table = pd.DataFrame(genre_table_data)
     
-    print(f"✓ Created genre table with {len(genre_records)} unique genres")
+    # Connect to database and save our table
+    database_connection = create_engine(connection_string)
+    final_genre_table.to_sql('genre', database_connection, if_exists='replace', index=False)
     
-    return genre_df
+    print(f"✓ Created genre table with {len(genre_table_data)} unique genres")
+    
+    # Return the table so other code can use it
+    return final_genre_table
 
 
-def get_genre_ids_for_movie(genre_string, genre_lookup):
-    """
-    Helper function: converts genre string to list of genre IDs
-    Example: "Action, Comedy" -> "1,3" or [1, 3]
-    """
+def get_genre_ids_for_movie(genre_text, genre_lookup_dict):
     
-    if pd.isna(genre_string) or not genre_string.strip():
+    # This function converts "Action, Comedy" into "1,3" (the ID numbers)
+    
+    # If no genre provided, return nothing
+    if pd.isna(genre_text) or not genre_text.strip():
         return None
     
-    genre_ids = []
+    # List to collect the ID numbers
+    genre_id_list = []
     
-    # Split by comma or slash
-    if ',' in genre_string:
-        genres = [g.strip() for g in genre_string.split(',')]
-    elif '/' in genre_string:
-        genres = [g.strip() for g in genre_string.split('/')]
+    # Split the genres (same logic as before)
+    if ',' in genre_text:
+        # Handle comma-separated genres
+        individual_genres = [g.strip() for g in genre_text.split(',')]
+    elif '/' in genre_text:
+        # Handle slash-separated genres  
+        individual_genres = [g.strip() for g in genre_text.split('/')]
     else:
-        genres = [genre_string.strip()]
+        # Single genre
+        individual_genres = [genre_text.strip()]
     
-    # Look up each genre ID
-    for genre in genres:
-        if genre in genre_lookup:
-            genre_ids.append(genre_lookup[genre])
+    # Look up the ID number for each genre
+    for genre_name in individual_genres:
+        if genre_name in genre_lookup_dict:
+            # Find the ID for this genre and add it to our list
+            genre_id_list.append(genre_lookup_dict[genre_name])
     
-    # Return as comma-separated string for database storage
-    return ','.join(map(str, genre_ids)) if genre_ids else None
+    # Convert ID numbers to text format for database storage
+    # Example: [1, 3, 5] becomes "1,3,5"
+    if genre_id_list:
+        return ','.join(map(str, genre_id_list))
+    else:
+        return None
