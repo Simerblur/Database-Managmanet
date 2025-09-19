@@ -3,34 +3,15 @@ from sqlalchemy import create_engine
 from builders.genre_builder import create_genre_table
 
 
-def make_movie_id(title, year, date=None):
-    # Create unique ID like "2021-spiderman" 
-    # Handle missing data
-    title = title if pd.notna(title) else "unknown"
-    year = int(year) if pd.notna(year) else 0
-    
-    # Try to get month/day from date
-    month = day = "01"
-    if pd.notna(date):
-        try:
-            from dateutil import parser
-            parsed = parser.parse(str(date))
-            month, day = f"{parsed.month:02d}", f"{parsed.day:02d}"
-        except:
-            pass  # Use defaults if date parsing fails
-    
-    # Return formatted ID
-    return f"{year:04d}{month}{day}-{title}"
-
-
-def create_movie_lookup(review_data):
-    # Create a fast lookup dictionary for movies
-    # Like a phone book: give me title+year, get back the row number
+def create_metadata_lookup(meta_data):
+    """
+    Create a fast lookup dictionary for metadata
+    """
     
     lookup = {}
     
-    # Go through each movie and create lookup entries
-    for row_num, movie in review_data.iterrows():
+    # Go through each movie in metadata and create lookup entries
+    for row_num, movie in meta_data.iterrows():
         title = movie.get('title_normalized')
         date = movie.get('RelDate')
         
@@ -51,8 +32,10 @@ def create_movie_lookup(review_data):
     return lookup
 
 
-def find_review_match(sales_movie, lookup):
-    # Find the best matching review for this sales movie
+def find_metadata_match(sales_movie, lookup):
+    """
+    Find the best matching metadata for this sales movie
+    """
     
     title = sales_movie.get('title_normalized')
     year = sales_movie.get('year')
@@ -70,57 +53,73 @@ def find_review_match(sales_movie, lookup):
     return lookup.get(title)
 
 
-def combine_data(sales_movie, review_row, review_data, genres):
-    # Combine sales and review data into one complete movie record
+def combine_data(sales_movie, meta_row, meta_data, genre_lookup, movie_id):
+    """
+    Combine sales and metadata into one complete movie record
+    """
     
     # Start with sales data
     movie = {
-        'movie_id': make_movie_id(
-            sales_movie.get('title_normalized'),
-            sales_movie.get('year'),
-            sales_movie.get('release_date')
-        ),
+        'movie_id': movie_id,
         'title': sales_movie.get('title'),
+        'title_normalized': sales_movie.get('title_normalized'),
         'runtime': sales_movie.get('runtime'),
         'release_year': sales_movie.get('year'),
         'release_date': sales_movie.get('release_date'),
         'metacritic_url': sales_movie.get('url'),
     }
     
-    # Add review data if we found a match
-    if review_row is not None:
-        review = review_data.iloc[review_row]
+    # Add metadata if we found a match
+    if meta_row is not None:
+        metadata = meta_data.iloc[meta_row]
         movie.update({
-            'director': review.get('director'),
-            'studio': review.get('studio'),
-            'rating': review.get('rating'),
-            'critic_score': review.get('metascore'),
-            'user_score': review.get('userscore'),
+            'director': metadata.get('director'),
+            'studio': metadata.get('studio'),
+            'rating': metadata.get('rating'),
+            'critic_score': metadata.get('metascore'),
+            'user_score': metadata.get('userscore'),
+            'cast': metadata.get('cast'),
+            'summary': metadata.get('summary'),
+            'awards': metadata.get('awards'),
         })
+        # Handle genres from both sources
+        movie['genre_ids'] = get_genre_ids(
+            sales_movie.get('genre'), 
+            metadata.get('genre'), 
+            genre_lookup
+        )
     else:
-        # No review data found
+        # No metadata found - use sales data only
         movie.update({
-            'director': None, 'studio': None, 'rating': None,
-            'critic_score': None, 'user_score': None,
+            'director': None, 
+            'studio': None, 
+            'rating': None,
+            'critic_score': None, 
+            'user_score': None,
+            'cast': None,
+            'summary': None,
+            'awards': None,
         })
-    
-    # Handle genres from both sources
-    movie['genre_ids'] = get_genre_ids(
-        sales_movie.get('genre'), 
-        review.get('genre') if review_row else None, 
-        genres
-    )
+        # Handle genres from sales data only
+        movie['genre_ids'] = get_genre_ids(
+            sales_movie.get('genre'), 
+            None, 
+            genre_lookup
+        )
     
     return movie
 
 
-def get_genre_ids(sales_genre, review_genre, genre_lookup):
-    # Convert genre names to ID numbers like "Action, Comedy" -> "1,3"
+def get_genre_ids(sales_genre, meta_genre, genre_lookup):
+    """
+    Convert genre names to ID numbers like "Action, Comedy" -> "1,3"
+    Combines genres from both sales and metadata
+    """
     
     all_genres = set()
     
     # Process both genre sources
-    for genre_text in [sales_genre, review_genre]:
+    for genre_text in [sales_genre, meta_genre]:
         if pd.notna(genre_text) and genre_text.strip():
             # Split multiple genres
             if ',' in genre_text:
@@ -136,51 +135,63 @@ def get_genre_ids(sales_genre, review_genre, genre_lookup):
     return ','.join(map(str, ids)) if ids else None
 
 
-def build_movie_database(sales_data, review_data, connection):
-    # Main function: combines everything into one database
+def build_movie_database(sales_data, meta_data, connection):
+    """
+    Build movie database combining sales and metadata
+    """
         
-    # Step 1: Create genre table
-    genre_table = create_genre_table(sales_data, review_data, connection)
+    print("Building movie database from sales + metadata...")
+    
+    # Step 1: Create genre table from both sources
+    print("Creating genre table...")
+    genre_table = create_genre_table(sales_data, meta_data, connection)
     genre_lookup = dict(zip(genre_table['Name'], genre_table['GenreId']))
     
-    # Step 2: Create lookup for fast matching
-    lookup = create_movie_lookup(review_data)
+    # Step 2: Create lookup for fast metadata matching
+    print("Creating metadata lookup...")
+    meta_lookup = create_metadata_lookup(meta_data)
     
     # Step 3: Process all movies
+    print("Processing and matching movies...")
     final_movies = []
-    processed_ids = set()  # Track duplicates
+    processed_titles = set()  # Simple duplicate tracking
+    movie_id_counter = 1  # Start IDs from 1
     
     for i, sales_movie in sales_data.iterrows():        
         # Skip movies without titles
         if not pd.notna(sales_movie.get('title')):
             continue
         
-        # Create unique ID and skip duplicates
-        movie_id = make_movie_id(
-            sales_movie.get('title_normalized'),
-            sales_movie.get('year'),
-            sales_movie.get('release_date')
-        )
+        # Create simple duplicate check using normalized title + year
+        title_year_key = f"{sales_movie.get('title_normalized')}_{sales_movie.get('year')}"
         
-        if movie_id in processed_ids:
+        if title_year_key in processed_titles:
             continue
-        processed_ids.add(movie_id)
+        processed_titles.add(title_year_key)
         
-        # Find matching review and combine data
-        review_row = find_review_match(sales_movie, lookup)
-        complete_movie = combine_data(sales_movie, review_row, review_data, genre_lookup)
+        # Find matching metadata and combine data
+        meta_row = find_metadata_match(sales_movie, meta_lookup)
+        complete_movie = combine_data(sales_movie, meta_row, meta_data, genre_lookup, movie_id_counter)
         final_movies.append(complete_movie)
+        
+        movie_id_counter += 1  # Increment ID for next movie
     
     # Step 4: Save to database
+    print(f"Saving {len(final_movies)} movies to database...")
     movies_df = pd.DataFrame(final_movies)
     engine = create_engine(connection)
+    
+    # Save the data with movie_id as a regular column
     movies_df.to_sql('movie', engine, if_exists='replace', index=False)
     
+   
     
     return movies_df
 
 
 # Main entry point
 def create_movie_table(sales_df, meta_df, connection_string):
-    # Keep same interface as original code
+    """
+    Main entry point - combines sales and metadata
+    """
     return build_movie_database(sales_df, meta_df, connection_string)
