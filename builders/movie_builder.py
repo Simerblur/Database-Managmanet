@@ -1,6 +1,6 @@
 import pandas as pd
 from sqlalchemy import create_engine
-from genre_builder import create_genre_table
+from builders.genre_builder import create_genre_table
 
 
 def make_movie_id(title, year, date=None):
@@ -85,10 +85,6 @@ def combine_data(sales_movie, review_row, review_data, genres):
         'release_year': sales_movie.get('year'),
         'release_date': sales_movie.get('release_date'),
         'metacritic_url': sales_movie.get('url'),
-        'production_budget': sales_movie.get('production_budget'),
-        'worldwide_box_office': sales_movie.get('worldwide_box_office'),
-        'domestic_box_office': sales_movie.get('domestic_box_office'),
-        'international_box_office': sales_movie.get('international_box_office'),
     }
     
     # Add review data if we found a match
