@@ -137,7 +137,7 @@ def get_genre_ids(sales_genre, meta_genre, genre_lookup):
 
 def build_movie_database(sales_data, meta_data, connection):
     """
-    Build movie database combining sales and metadata
+    Build movie database combining sales and metadata with numerical IDs
     """
         
     print("Building movie database from sales + metadata...")
@@ -151,11 +151,11 @@ def build_movie_database(sales_data, meta_data, connection):
     print("Creating metadata lookup...")
     meta_lookup = create_metadata_lookup(meta_data)
     
-    # Step 3: Process all movies
+    # Step 3: Process all movies with numerical IDs
     print("Processing and matching movies...")
     final_movies = []
     processed_titles = set()  # Simple duplicate tracking
-    movie_id_counter = 1  # Start IDs from 1
+    movie_id_counter = 1  # Start numerical IDs from 1
     
     for i, sales_movie in sales_data.iterrows():        
         # Skip movies without titles
@@ -169,22 +169,25 @@ def build_movie_database(sales_data, meta_data, connection):
             continue
         processed_titles.add(title_year_key)
         
+        # Use numerical movie ID (this will match box_office_performance table)
+        movie_id = movie_id_counter
+        
         # Find matching metadata and combine data
         meta_row = find_metadata_match(sales_movie, meta_lookup)
-        complete_movie = combine_data(sales_movie, meta_row, meta_data, genre_lookup, movie_id_counter)
+        complete_movie = combine_data(sales_movie, meta_row, meta_data, genre_lookup, movie_id)
         final_movies.append(complete_movie)
         
-        movie_id_counter += 1  # Increment ID for next movie
+        movie_id_counter += 1  # Increment for next movie
     
     # Step 4: Save to database
     print(f"Saving {len(final_movies)} movies to database...")
     movies_df = pd.DataFrame(final_movies)
     engine = create_engine(connection)
     
-    # Save the data with movie_id as a regular column
+    # Save the data with numerical movie_id
     movies_df.to_sql('movie', engine, if_exists='replace', index=False)
     
-   
+    print(f"✓ Movie IDs range from 1 to {len(final_movies)}")
     
     return movies_df
 
