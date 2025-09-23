@@ -41,6 +41,7 @@ def create_user_reviews_table(user_reviews_df, connection_string):
         'word_count': word_count_clean,
         'emotional_tone': user_reviews_df['Tone'],
         'user_id': user_reviews_df['user_id']
+        
     })
     
     # Convert to DataFrame and save to PostgreSQL

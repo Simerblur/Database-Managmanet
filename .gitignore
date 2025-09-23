@@ -1,0 +1,17 @@
+*
+!.gitignore
+!database_builder.py
+!run_database.py
+!reviews.ipynb
+!sales.ipynb
+!sales-title-norm.ipynb
+!sales-deprecated.ipynb
+!userReview.ipynb
+!*.py
+!*.ipynb
+!/cleanedData/
+!/builders/
+!/cleaners/
+!/data/
+!/analysers/
+
