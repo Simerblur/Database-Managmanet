@@ -6,11 +6,6 @@ from sqlalchemy import create_engine
 # =============================================================================
 # --- TASK: Define function to generate unique ID mapping ---
 def create_movie_lookup_from_sales(sales_df):
-    """
-    This helper function creates a dictionary that assigns a unique, sequential number 
-    (the **movie_id**) to each film. This process is crucial because the Movie table 
-    and the Box Office table must use the exact same unique ID for every movie.
-    """
     movie_lookup = {}
     processed_titles = set()
     movie_id_counter = 1
@@ -41,11 +36,6 @@ def create_movie_lookup_from_sales(sales_df):
 # =============================================================================
 # --- TASK: Main function to process financial data and save to database ---
 def create_box_office_performance_table(sales_df, connection_string):
-    """
-    This function processes the raw financial data, uses the standardized movie IDs, 
-    and saves the final table to the database.
-    """
-    
     print("Creating box office performance table with numerical IDs...")
     
     # We first generate the standardized movie IDs, as this must match the main Movie table creation process.

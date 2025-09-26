@@ -180,7 +180,7 @@ def build_movie_database(sales_data, meta_data, connection):
             continue
         processed_titles.add(title_year_key)
         
-        # This numerical ID is the primary key that links to all other tables (Box Office, Reviews).
+        # This numerical ID is the primary key that links to other tables (Box Office, Reviews).
         movie_id = movie_id_counter
         
         # Find the matching metadata record and combine all the data fields.
