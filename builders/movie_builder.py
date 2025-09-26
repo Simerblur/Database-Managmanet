@@ -1,3 +1,6 @@
+# Author: Juliusz Dokrzewski
+# =============================================================================
+
 import pandas as pd
 from sqlalchemy import create_engine
 from builders.genre_builder import create_genre_table

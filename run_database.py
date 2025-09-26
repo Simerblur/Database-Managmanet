@@ -1,3 +1,6 @@
+# Author: Juliusz Dokrzewski
+# =============================================================================
+
 import pandas as pd
 from builders.movie_builder import create_movie_table
 from builders.user_builder import create_user_table, create_user_reviews_table
